@@ -32,6 +32,20 @@ reasons ship all the way to the dashboard — the number is only as useful as th
 | Kubernetes / microservices / multi-cloud in the stack | +15 | Distributed systems mean more failure modes and noisier on-call |
 | 3+ recent public incidents | +20 | Visible, admitted reliability pain — a timely reason to reach out |
 
+## Setup
+
+One dependency (`anthropic`, for the email step); everything else is standard
+library. Use a virtual environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+On macOS the interpreter is `python3` (Apple no longer ships a bare `python`).
+Inside an activated venv, `python` works too.
+
 ## How to run
 
 ```bash
