@@ -12,7 +12,7 @@ The pipeline moves a `Company` (raw seed data) through three pure stages:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Literal
 
 
