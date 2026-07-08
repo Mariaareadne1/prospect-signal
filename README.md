@@ -43,6 +43,14 @@ generate → build dashboard`. It prints a ranked summary to the terminal, write
 one email per company to `drafts/`, and builds `index.html` (open it directly
 in a browser — no server needed).
 
+Useful flags:
+
+```bash
+python run.py --no-live      # skip the live status-page fetch, use seeded counts
+python run.py --no-emails    # skip email generation (scoring + dashboard still run)
+python run.py --timeout 3    # per-request timeout for the live fetch (seconds)
+```
+
 ### Outreach generation (optional API step)
 
 Email drafting calls the Anthropic API. Set your key first:
