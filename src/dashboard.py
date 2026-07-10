@@ -264,7 +264,7 @@ h1 { font-family: Georgia, "Times New Roman", serif; font-size: 35px; font-weigh
 .reasons { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 11px; }
 .reasons li { display: grid; grid-template-columns: 42px 1fr; gap: 12px; align-items: start; }
 .pts { background: var(--pts-bg); color: var(--pts-ink); font-size: 12.5px; font-weight: 660; text-align: center; padding: 2px 0; border-radius: 6px; }
-.reason { font-size: 13.5px; color: var(--ink); }
+.reason { font-size: 13.5px; color: var(--ink); text-transform: none; }
 
 .email { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
 .email pre { margin: 0; white-space: pre-wrap; font-family: inherit; font-size: 13.5px; line-height: 1.62; color: var(--ink); }
