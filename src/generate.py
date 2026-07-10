@@ -32,7 +32,7 @@ FALLBACK_MODEL = "claude-opus-4-8"
 MAX_TOKENS = 1024
 
 # Bump when the prompt/voice changes so cached drafts regenerate.
-_VOICE_VERSION = 4
+_VOICE_VERSION = 5
 
 DRAFTS_DIR = Path("drafts")
 CACHE_PATH = Path(".cache/emails.json")
@@ -54,18 +54,20 @@ Voice rules (these matter a lot):
 "I'm excited to". No fake enthusiasm.
 - No em-dashes anywhere. No bullet points in the body.
 - Short: 4 to 6 sentences, hard maximum. Cover three things in whatever order \
-feels natural for this specific company: something concrete about their \
-production reality, why Resolve is relevant to it, and one clear ask for 15 \
-minutes with the right person. Do not follow an identical template across \
-companies.
-- Do not open with the word "Noticed" or by stating an incident count. Vary \
-your opening across emails. Enter through a different detail each time: \
-sometimes the team's scale, sometimes their stack, sometimes a specific tool, \
-sometimes the persona's day-to-day. The first sentence should not be \
-structurally interchangeable with a first sentence written for a different \
-company.
+feels natural for this company: something concrete about their production \
+reality (ideally their most recent public incident), why Resolve is relevant, \
+and one clear ask for 15 minutes with the right person. Do not follow an \
+identical template across companies.
+- Do not open with the word "Noticed" or by stating a raw incident count. Vary \
+your opening across emails: enter through a different detail each time (scale, \
+stack, a specific tool, the persona's day-to-day). The first sentence must not \
+be structurally interchangeable with one written for a different company.
 - Never use the phrases "wall of dashboards", "first pass", or "grounded \
 starting point". Describe what Resolve does in fresh words each time.
+- When the company has a recent public incident, anchor the email to that: it \
+is a signal they published themselves, which makes it the most respectful and \
+specific reason to reach out. Reference their own status page reality, not \
+scraped facts.
 - Only mention recent funding if the signals explicitly say they raised in the \
 last 12 months. If they did not, do not reference funding at all.
 - Warm, grounded, specific, understated. Never presumptuous or cocky. Do not \
@@ -99,10 +101,20 @@ def _enforce_voice(text: str) -> str:
 
 def _build_user_prompt(company: Company, signals: Signals, score: ScoreResult) -> str:
     """Assemble the per-company brief the model writes from — its real signals."""
-    incident_note = (
-        f"{signals.incident_count} recent public incidents "
-        f"({'from their live status page' if signals.incident_count_source == 'live' else 'on public record'})"
-    )
+    days = signals.days_since_last_incident
+    if days is not None:
+        when = "today" if days == 0 else f"about {days} day{'' if days == 1 else 's'} ago"
+        incident_note = (
+            f"{signals.incident_count} recent incidents on their public status page; "
+            f"the most recent was {when}"
+        )
+    else:
+        origin = "their live status page" if signals.incident_count_source == "live" else "public record"
+        incident_note = (
+            f"{signals.incident_count} recent public incidents ({origin}); "
+            "no dated recent incident is available"
+        )
+    raised = "yes" if company.funded_last_12mo else "no"
     reasons = "\n".join(f"- {r.text}" for r in score.reasons)
     return f"""\
 Write the email to this company.
@@ -110,10 +122,11 @@ Write the email to this company.
 Company: {company.name}
 Write to: {company.persona}
 Funding stage: {company.stage}
+Raised in the last 12 months: {raised}
 Engineering headcount: about {company.eng_headcount}
 On-call and incident tooling they use: {", ".join(company.oncall_tools)}
 Production stack: {", ".join(company.stack)}
-Incident history: {incident_note}
+Incident signal: {incident_note}
 
 Why we think they're a fit (use these to ground the email, don't list them):
 {reasons}"""
@@ -132,6 +145,8 @@ def _cache_key(company: Company, signals: Signals, score: ScoreResult) -> str:
         "stack": company.stack,
         "incident_count": signals.incident_count,
         "incident_source": signals.incident_count_source,
+        "days_since_last_incident": signals.days_since_last_incident,
+        "funded_last_12mo": company.funded_last_12mo,
         "reasons": [r.text for r in score.reasons],
     }
     blob = json.dumps(payload, sort_keys=True)

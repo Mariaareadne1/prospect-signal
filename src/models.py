@@ -91,6 +91,7 @@ class Signals:
     modern_infra: list[str]        # stack markers (k8s / microservices / multi-cloud)
     incident_count: int            # resolved incident count (live if available, else seed)
     incident_count_source: Literal["live", "seed"]
+    days_since_last_incident: int | None  # "why now" recency; None when no dated incident is known
 
 
 @dataclass(frozen=True)
@@ -117,3 +118,6 @@ class Lead:
     signals: Signals
     score: ScoreResult
     email: str = ""
+    # Stub for the future learning loop: reply/meeting outcomes would flow back
+    # here to validate (and retrain) the scoring rubric. Not wired to tracking yet.
+    outreach_status: str = "not_contacted"

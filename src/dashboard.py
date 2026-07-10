@@ -71,10 +71,29 @@ def _email_html(lead: Lead) -> str:
     return f'<div class="email"><pre>{_esc(lead.email)}</pre></div>'
 
 
+def _recency(signals) -> tuple[str, bool]:
+    """A 'why now' recency line and whether the incident is fresh (worth this week)."""
+    days = signals.days_since_last_incident
+    if days is None:
+        return "No recent public incident", False
+    if days == 0:
+        return "Last incident today", True
+    label = f"Last incident {days} day{'' if days == 1 else 's'} ago"
+    return label, days <= 14  # fresh = a timely, contact-this-week trigger
+
+
+def _status_label(status: str) -> str:
+    """Humanize the stubbed outreach_status, e.g. 'not_contacted' -> 'Not contacted'."""
+    return status.replace("_", " ").capitalize()
+
+
 def _card(rank: int, lead: Lead) -> str:
     c, s = lead.company, lead.score
     tier_label, tier_class = _tier(s.score)
     panel_id = f"panel-{c.slug}"
+    recency_text, fresh = _recency(lead.signals)
+    recency_sort = lead.signals.days_since_last_incident
+    recency_sort = recency_sort if recency_sort is not None else 100000
     chips = "".join(
         [
             _chip("Stage", c.stage),
@@ -84,7 +103,7 @@ def _card(rank: int, lead: Lead) -> str:
         ]
     )
     return f"""\
-<article class="card {tier_class}">
+<article class="card {tier_class}" data-score="{s.score}" data-recency="{recency_sort}">
   <button class="row" aria-expanded="false" aria-controls="{panel_id}">
     <span class="rank">{rank}</span>
     {_ring(s.score, tier_class)}
@@ -92,7 +111,9 @@ def _card(rank: int, lead: Lead) -> str:
       <span class="name-line">
         <span class="name">{_esc(c.name)}</span>
         <span class="tier"><span class="dot"></span>{_esc(tier_label)}</span>
+        <span class="status">{_esc(_status_label(lead.outreach_status))}</span>
       </span>
+      <span class="recency{' fresh' if fresh else ''}">{_esc(recency_text)}</span>
       <span class="chips">{chips}</span>
     </span>
     <span class="persona">{_esc(c.persona)}</span>
@@ -169,9 +190,17 @@ h1 { font-size: 30px; font-weight: 680; letter-spacing: -.02em; margin: 0 0 6px;
 .tile-num { font-size: 26px; font-weight: 680; letter-spacing: -.02em; }
 .tile-label { color: var(--muted); font-size: 12.5px; margin-top: 3px; letter-spacing: .01em; }
 
-.legend { display: flex; gap: 18px; align-items: center; color: var(--muted); font-size: 12.5px; margin: 0 2px 14px; }
+.controls { display: flex; align-items: center; justify-content: space-between; gap: 16px 24px; flex-wrap: wrap; margin: 0 2px 14px; }
+.legend { display: flex; gap: 18px; align-items: center; color: var(--muted); font-size: 12.5px; }
 .legend .k { display: inline-flex; align-items: center; gap: 7px; }
 .legend .dot { width: 9px; height: 9px; border-radius: 50%; }
+.sort { display: inline-flex; align-items: center; gap: 9px; color: var(--faint); font-size: 12.5px; }
+.sort-label { font-weight: 600; letter-spacing: .02em; }
+.sort .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.sort .seg button { border: 0; background: var(--card); color: var(--muted); font: inherit; font-size: 12.5px; padding: 5px 13px; cursor: pointer; }
+.sort .seg button + button { border-left: 1px solid var(--line); }
+.sort .seg button:hover { background: color-mix(in srgb, var(--accent) 6%, var(--card)); }
+.sort .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
 
 .list { display: flex; flex-direction: column; gap: 12px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
@@ -198,6 +227,10 @@ h1 { font-size: 30px; font-weight: 680; letter-spacing: -.02em; margin: 0 0 6px;
 .tier-high .tier .dot { background: var(--high); }
 .tier-strong .tier .dot { background: var(--strong); }
 .tier-moderate .tier .dot { background: var(--moderate); }
+.status { font-size: 11px; color: var(--faint); background: var(--chip-bg); padding: 2px 8px; border-radius: 6px; font-weight: 550; letter-spacing: .02em; }
+.recency { display: block; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.recency.fresh { color: var(--accent); font-weight: 600; }
+.recency.fresh::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: middle; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
 .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--chip-bg); color: var(--ink); font-size: 12px; padding: 3px 9px; border-radius: 7px; white-space: nowrap; }
 .chip-k { color: var(--faint); font-weight: 600; letter-spacing: .02em; }
@@ -238,6 +271,27 @@ document.querySelectorAll('.row').forEach(function (row) {
     var panel = document.getElementById(row.getAttribute('aria-controls'));
     if (panel) panel.hidden = open;
   });
+});
+
+// Sort toggle: reorder the cards by score (default) or by incident recency.
+var list = document.querySelector('.list');
+var buttons = document.querySelectorAll('.sort .seg button');
+function applySort(key) {
+  var cards = Array.prototype.slice.call(list.querySelectorAll('.card'));
+  cards.sort(function (a, b) {
+    if (key === 'recency') {
+      // Freshest incident first; unknowns (large sentinel) sink to the bottom.
+      return Number(a.dataset.recency) - Number(b.dataset.recency);
+    }
+    return Number(b.dataset.score) - Number(a.dataset.score);
+  });
+  cards.forEach(function (c) { list.appendChild(c); });
+}
+buttons.forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    buttons.forEach(function (b) { b.setAttribute('aria-pressed', String(b === btn)); });
+    applySort(btn.dataset.sort);
+  });
 });"""
 
 
@@ -273,10 +327,19 @@ def render_dashboard(
     {genline}
   </header>
   {_summary(ranked)}
-  <div class="legend">
-    <span class="k"><span class="dot" style="background:var(--high)"></span>High intent &ge; 90</span>
-    <span class="k"><span class="dot" style="background:var(--strong)"></span>Strong 80&ndash;89</span>
-    <span class="k"><span class="dot" style="background:var(--moderate)"></span>Moderate &lt; 80</span>
+  <div class="controls">
+    <div class="legend">
+      <span class="k"><span class="dot" style="background:var(--high)"></span>High intent &ge; 90</span>
+      <span class="k"><span class="dot" style="background:var(--strong)"></span>Strong 80&ndash;89</span>
+      <span class="k"><span class="dot" style="background:var(--moderate)"></span>Moderate &lt; 80</span>
+    </div>
+    <div class="sort">
+      <span class="sort-label">Sort</span>
+      <div class="seg" role="group" aria-label="Sort order">
+        <button type="button" data-sort="score" aria-pressed="true">Score</button>
+        <button type="button" data-sort="recency" aria-pressed="false">Recency</button>
+      </div>
+    </div>
   </div>
   <main class="list">
 {cards}
