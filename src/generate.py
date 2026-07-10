@@ -32,7 +32,7 @@ FALLBACK_MODEL = "claude-opus-4-8"
 MAX_TOKENS = 1024
 
 # Bump when the prompt/voice changes so cached drafts regenerate.
-_VOICE_VERSION = 3
+_VOICE_VERSION = 4
 
 DRAFTS_DIR = Path("drafts")
 CACHE_PATH = Path(".cache/emails.json")
@@ -53,9 +53,21 @@ Voice rules (these matter a lot):
 - Never write "I hope this email finds you", "I wanted to reach out", or \
 "I'm excited to". No fake enthusiasm.
 - No em-dashes anywhere. No bullet points in the body.
-- Short: 4 to 6 sentences, hard maximum. Structure it as one specific \
-observation about THEIR production setup, one line on why Resolve is relevant \
-to it, and one clear ask (15 minutes with an engineering leader).
+- Short: 4 to 6 sentences, hard maximum. Cover three things in whatever order \
+feels natural for this specific company: something concrete about their \
+production reality, why Resolve is relevant to it, and one clear ask for 15 \
+minutes with the right person. Do not follow an identical template across \
+companies.
+- Do not open with the word "Noticed" or by stating an incident count. Vary \
+your opening across emails. Enter through a different detail each time: \
+sometimes the team's scale, sometimes their stack, sometimes a specific tool, \
+sometimes the persona's day-to-day. The first sentence should not be \
+structurally interchangeable with a first sentence written for a different \
+company.
+- Never use the phrases "wall of dashboards", "first pass", or "grounded \
+starting point". Describe what Resolve does in fresh words each time.
+- Only mention recent funding if the signals explicitly say they raised in the \
+last 12 months. If they did not, do not reference funding at all.
 - Warm, grounded, specific, understated. Never presumptuous or cocky. Do not \
 claim to know their internal pain better than they do.
 - Address the email to the given buyer persona and pitch at the level that \
