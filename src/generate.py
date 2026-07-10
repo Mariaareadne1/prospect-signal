@@ -32,7 +32,7 @@ FALLBACK_MODEL = "claude-opus-4-8"
 MAX_TOKENS = 1024
 
 # Bump when the prompt/voice changes so cached drafts regenerate.
-_VOICE_VERSION = 6
+_VOICE_VERSION = 7
 
 # Written to the draft of accounts with no active outreach trigger.
 HOLD_PLACEHOLDER = "No active trigger — hold for signal"
@@ -75,6 +75,9 @@ most overused AI pattern. Say the thing plainly and stop.
 point in grander words. Short, plain sentences beat layered ones.
 - Do not use vague authority-flattery like "most eng leaders at your scale know \
 this well." Drop it.
+- Refer to Resolve in the third person, never first person. Write "teams use it" \
+or "Resolve does X", never "we" or "us" or "our". The sender is introducing \
+Resolve, not speaking as an existing employee.
 - When the company has a recent public incident, anchor the email to that: it \
 is a signal they published themselves, which makes it the most respectful and \
 specific reason to reach out. Reference their own status page reality, not \
