@@ -22,7 +22,7 @@ from datetime import datetime
 from pathlib import Path
 
 from src import dashboard, enrich, generate, score
-from src.models import Company, Lead
+from src.models import Company, Lead, is_triggered
 
 DATA_PATH = Path("data/companies.json")
 
@@ -59,7 +59,10 @@ def _print_summary(leads: list[Lead]) -> None:
     print(f"  {'#':>2}  {'SCORE':>5}  {'TIER':<11}  {'COMPANY':<{name_w}}  DRAFT")
     print(f"  {'-' * 2}  {'-' * 5}  {'-' * 11}  {'-' * name_w}  {'-' * 5}")
     for rank, lead in enumerate(ranked, start=1):
-        draft = "yes" if lead.email else "-"
+        if not is_triggered(lead.signals, lead.score):
+            draft = "hold"
+        else:
+            draft = "yes" if lead.email else "-"
         print(
             f"  {rank:>2}  {lead.score.score:>5}  {_tier_label(lead.score.score):<11}  "
             f"{lead.company.name:<{name_w}}  {draft}"
@@ -97,17 +100,18 @@ def main(argv: list[str] | None = None) -> None:
     scores = score.score_all(companies, signals)
     print("Scored all companies against the propensity rubric")
 
-    # 4. Generate outreach
+    # 4. Generate outreach (only for accounts with an active trigger)
     print(f"Generating outreach emails (Anthropic API: {'off' if args.no_emails else 'on'}) ...")
     emails, report = generate.generate_all(companies, signals, scores, use_api=not args.no_emails)
+    print(f"  {report.held} of {len(companies)} accounts held for signal (no active trigger)")
     if report.used_api:
         print(f"  drafted {report.generated}, reused {report.cached} cached, skipped {report.skipped}")
         for err in report.errors[:5]:
             print(f"  ! {err}")
     elif report.cached:
         print(f"  reused {report.cached} cached drafts; new generation skipped ({report.reason})")
-    else:
-        print(f"  skipped email generation: {report.reason}")
+    elif report.skipped:
+        print(f"  skipped email generation for triggered accounts: {report.reason}")
 
     # 5. Build dashboard
     leads = [Lead(c, s, sc, emails[c.slug]) for c, s, sc in zip(companies, signals, scores)]

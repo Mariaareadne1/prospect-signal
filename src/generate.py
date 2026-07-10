@@ -25,14 +25,17 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .models import Company, ScoreResult, Signals
+from .models import Company, ScoreResult, Signals, is_triggered
 
 PRIMARY_MODEL = "claude-fable-5"
 FALLBACK_MODEL = "claude-opus-4-8"
 MAX_TOKENS = 1024
 
 # Bump when the prompt/voice changes so cached drafts regenerate.
-_VOICE_VERSION = 5
+_VOICE_VERSION = 6
+
+# Written to the draft of accounts with no active outreach trigger.
+HOLD_PLACEHOLDER = "No active trigger — hold for signal"
 
 DRAFTS_DIR = Path("drafts")
 CACHE_PATH = Path(".cache/emails.json")
@@ -64,10 +67,22 @@ stack, a specific tool, the persona's day-to-day). The first sentence must not \
 be structurally interchangeable with one written for a different company.
 - Never use the phrases "wall of dashboards", "first pass", or "grounded \
 starting point". Describe what Resolve does in fresh words each time.
+- Never use the "X instead of Y" or "not X, it's Y" contrast construction. For \
+example, do not write "a diagnosis instead of a starting alert" or "the real \
+cost isn't the outage, it's the correlation work". This contrast-reframe is the \
+most overused AI pattern. Say the thing plainly and stop.
+- One idea per sentence. Do not stack multiple clauses each restating the same \
+point in grander words. Short, plain sentences beat layered ones.
+- Do not use vague authority-flattery like "most eng leaders at your scale know \
+this well." Drop it.
 - When the company has a recent public incident, anchor the email to that: it \
 is a signal they published themselves, which makes it the most respectful and \
 specific reason to reach out. Reference their own status page reality, not \
 scraped facts.
+- When the company has NO recent public incident, write a shorter, lower-key \
+email. Do not manufacture present-tense urgency. Acknowledge there's no fire \
+right now and position Resolve as worth a look before the next incident, not \
+during one.
 - Only mention recent funding if the signals explicitly say they raised in the \
 last 12 months. If they did not, do not reference funding at all.
 - Warm, grounded, specific, understated. Never presumptuous or cocky. Do not \
@@ -89,6 +104,7 @@ class GenerationReport:
     generated: int = 0
     cached: int = 0
     skipped: int = 0
+    held: int = 0  # accounts with no active trigger — draft held for signal
     used_api: bool = False
     reason: str = ""  # why generation was skipped, if it was
     errors: list[str] = field(default_factory=list)
@@ -225,9 +241,9 @@ def generate_all(
     """Generate (or reuse cached) emails for every company.
 
     Returns a ``{slug: email}`` map plus a report for the terminal. Emails are
-    written to ``drafts/<slug>.txt`` and kept in memory for the dashboard. A
-    company whose email cannot be produced maps to an empty string; the rest of
-    the pipeline is unaffected.
+    written to ``drafts/<slug>.txt`` and kept in memory for the dashboard.
+    Accounts with no active trigger map to ``HOLD_PLACEHOLDER`` (no API call); a
+    triggered company whose email cannot be produced maps to an empty string.
     """
     report = GenerationReport()
     cache = _load_cache()
@@ -239,6 +255,14 @@ def generate_all(
     client_attempted = False
 
     for company, sig, score in zip(companies, signals, scores):
+        # Trigger gate: only draft when there's a reason to reach out this cycle.
+        # Everything else is held for signal — no API call, just a placeholder.
+        if not is_triggered(sig, score):
+            emails[company.slug] = HOLD_PLACEHOLDER
+            report.held += 1
+            (DRAFTS_DIR / f"{company.slug}.txt").write_text(HOLD_PLACEHOLDER + "\n")
+            continue
+
         key = _cache_key(company, sig, score)
         cached = cache.get(company.slug)
 

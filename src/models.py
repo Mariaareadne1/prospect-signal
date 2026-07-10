@@ -121,3 +121,25 @@ class Lead:
     # Stub for the future learning loop: reply/meeting outcomes would flow back
     # here to validate (and retrain) the scoring rubric. Not wired to tracking yet.
     outreach_status: str = "not_contacted"
+
+
+# --- Outreach trigger ---------------------------------------------------------
+# The tool only drafts when there's a concrete reason to reach out this cycle:
+# a fresh public incident, or a top-tier propensity score. Everything else is
+# held for signal, which is what turns the ranked list into a real queue.
+TRIGGER_RECENCY_DAYS = 14
+TRIGGER_SCORE = 90
+
+
+def is_triggered(signals: Signals, score: ScoreResult) -> bool:
+    """True when an account warrants a full outreach draft now.
+
+    Fires on a recent public incident (a self-published "why now") or a
+    high-propensity score. Shared by the generator (whether to draft) and the
+    dashboard (whether to show the hold state), so the threshold lives in one place.
+    """
+    recent_incident = (
+        signals.days_since_last_incident is not None
+        and signals.days_since_last_incident <= TRIGGER_RECENCY_DAYS
+    )
+    return recent_incident or score.score >= TRIGGER_SCORE

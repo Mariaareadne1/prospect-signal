@@ -13,7 +13,7 @@ import html
 import math
 from pathlib import Path
 
-from .models import Lead
+from .models import Lead, is_triggered
 
 OUTPUT_PATH = Path("index.html")
 
@@ -62,7 +62,13 @@ def _reasons_html(lead: Lead) -> str:
     return f'<ol class="reasons">{rows}</ol>'
 
 
-def _email_html(lead: Lead) -> str:
+def _email_html(lead: Lead, triggered: bool) -> str:
+    if not triggered:
+        return (
+            '<p class="empty">Held for signal. No draft is written until this account has a '
+            "recent public incident or crosses a score of 90 &mdash; the queue only reaches out "
+            "when there's a reason to.</p>"
+        )
     if not lead.email:
         return (
             '<p class="empty">Email not generated yet. Set <code>ANTHROPIC_API_KEY</code> '
@@ -94,6 +100,10 @@ def _card(rank: int, lead: Lead) -> str:
     recency_text, fresh = _recency(lead.signals)
     recency_sort = lead.signals.days_since_last_incident
     recency_sort = recency_sort if recency_sort is not None else 100000
+    triggered = is_triggered(lead.signals, s)
+    hold_class = "" if triggered else " hold"
+    hold_chip = "" if triggered else '<span class="hold">Hold for signal</span>'
+    draft_heading = "First-touch draft" if triggered else "Outreach"
     chips = "".join(
         [
             _chip("Stage", c.stage),
@@ -103,7 +113,7 @@ def _card(rank: int, lead: Lead) -> str:
         ]
     )
     return f"""\
-<article class="card {tier_class}" data-score="{s.score}" data-recency="{recency_sort}">
+<article class="card {tier_class}{hold_class}" data-score="{s.score}" data-recency="{recency_sort}">
   <button class="row" aria-expanded="false" aria-controls="{panel_id}">
     <span class="rank">{rank}</span>
     {_ring(s.score, tier_class)}
@@ -112,6 +122,7 @@ def _card(rank: int, lead: Lead) -> str:
         <span class="name">{_esc(c.name)}</span>
         <span class="tier"><span class="dot"></span>{_esc(tier_label)}</span>
         <span class="status">{_esc(_status_label(lead.outreach_status))}</span>
+        {hold_chip}
       </span>
       <span class="recency{' fresh' if fresh else ''}">{_esc(recency_text)}</span>
       <span class="chips">{chips}</span>
@@ -126,8 +137,8 @@ def _card(rank: int, lead: Lead) -> str:
         {_reasons_html(lead)}
       </div>
       <div class="panel-col">
-        <h3>First-touch draft <span class="to">to {_esc(c.persona)}</span></h3>
-        {_email_html(lead)}
+        <h3>{draft_heading} <span class="to">to {_esc(c.persona)}</span></h3>
+        {_email_html(lead, triggered)}
       </div>
     </div>
   </section>
@@ -137,8 +148,8 @@ def _card(rank: int, lead: Lead) -> str:
 def _summary(leads: list[Lead]) -> str:
     n = len(leads)
     high = sum(1 for l in leads if l.score.score >= 90)
-    drafts = sum(1 for l in leads if l.email)
-    avg = round(sum(l.score.score for l in leads) / n) if n else 0
+    in_queue = sum(1 for l in leads if is_triggered(l.signals, l.score))
+    drafts = sum(1 for l in leads if is_triggered(l.signals, l.score) and l.email)
 
     def tile(value: str, label: str) -> str:
         return f'<div class="tile"><div class="tile-num">{_esc(value)}</div><div class="tile-label">{_esc(label)}</div></div>'
@@ -147,7 +158,7 @@ def _summary(leads: list[Lead]) -> str:
         '<div class="tiles">'
         + tile(str(n), "Accounts")
         + tile(str(high), "High intent")
-        + tile(str(avg), "Avg score")
+        + tile(str(in_queue), "In queue")
         + tile(str(drafts), "Drafts ready")
         + "</div>"
     )
@@ -235,6 +246,8 @@ h1 { font-family: Georgia, "Times New Roman", serif; font-size: 35px; font-weigh
 .status { font-size: 11px; color: var(--faint); background: var(--chip-bg); padding: 2px 8px; border-radius: 6px; font-weight: 550; letter-spacing: .02em; }
 .recency { display: block; font-size: 12px; color: var(--muted); margin-top: 6px; }
 .recency.fresh { display: inline-block; background: var(--accent); color: var(--accent-ink); font-weight: 640; padding: 2px 8px; border-radius: 2px; }
+.hold { font-size: 11px; color: var(--faint); border: 1px solid var(--line); padding: 1px 8px; border-radius: 2px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.card.hold { opacity: .9; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
 .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--chip-bg); color: var(--ink); font-size: 12px; padding: 3px 9px; border-radius: 7px; white-space: nowrap; }
 .chip-k { color: var(--faint); font-weight: 600; letter-spacing: .02em; }
