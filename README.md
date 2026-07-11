@@ -1,104 +1,86 @@
 # prospect-signal
 
-A lead-scoring and outreach pipeline for [Resolve AI](https://resolve.ai)'s
-ideal customer profile: engineering teams running painful on-call rotations.
+I built this for the Growth & Strategy role at Resolve AI. Resolve's buyers are
+engineering teams whose on-call is genuinely painful, and the hardest part of an
+SDR's job isn't writing emails, it's deciding who's worth writing to and when.
+That decision usually lives in someone's head. This makes it explicit.
 
-It takes a list of target companies, enriches each with public signals an SDR
-cares about, scores them 0–100 for buying propensity **with transparent
-reasons**, drafts a tailored first-touch email per company, and renders
-everything to a clean, single-file dashboard.
+prospect-signal takes a set of target accounts, scores each one on how much on-call
+pain it's likely feeling, and only drafts outreach for the accounts where there's a
+real reason to reach out right now. The output is a ranked dashboard: who to contact,
+why they scored the way they did, and a first email that references their actual
+production setup.
 
-Built as a portfolio piece — the point is to do the SDR job (find the right
-accounts, know why they're right, and open a real conversation) end to end.
+## The idea
 
-## Why these signals
+A lead score on its own is a guess. What makes an account worth an email today isn't
+just that it fits the profile, it's that it's showing a signal it published itself.
+A company's status page is the most honest thing about it: when incidents show up
+there, the team is provably feeling the exact pain Resolve solves, and it's a public
+fact, so referencing it isn't creepy, it's relevant.
 
-Resolve AI sells incident response and production engineering. The strongest
-buying signal is a team that **already pays for on-call tooling and still feels
-the pain**: a large-enough engineering org, modern distributed infrastructure,
-and a public track record of incidents. The rubric encodes exactly that.
+So this isn't a list, it's a queue. It watches for the signals a company broadcasts
+when it's hurting and surfaces those accounts first. Accounts with no recent incident
+and nothing but a decent profile score get held, not spammed. The tool reaching out
+only when there's a reason is the point, not a limitation.
 
-## Scoring rubric
+## How it scores
 
-Each rule that fires adds points **and** records a plain-language reason. The
-reasons ship all the way to the dashboard — the number is only as useful as the
-"why" behind it. Scores are capped at 100.
+Every account gets 0–100 from a transparent rubric. Each rule adds points and states
+its reason in plain language, because the first question anyone asks about a lead
+score is "says who, based on what."
 
-| Signal | Points | Why it matters |
-| --- | ---: | --- |
-| Uses PagerDuty / Opsgenie / Datadog / Splunk on-call | +30 | Already pays for incident tooling — budget plus admitted pain |
-| Engineering headcount > 200 | +20 | Enough scale that on-call load is a real, recurring cost |
-| Raised funding in the last 12 months | +15 | Fresh budget and pressure to keep reliability ahead of growth |
-| Kubernetes / microservices / multi-cloud in the stack | +15 | Distributed systems mean more failure modes and noisier on-call |
-| 3+ recent public incidents | +20 | Visible, admitted reliability pain — a timely reason to reach out |
+- Already pays for incident tooling (PagerDuty, Datadog, Opsgenie, Splunk): +30.
+  Budget exists and the pain is admitted.
+- Engineering org over 200: +20. On-call load scales with headcount.
+- Raised in the last 12 months: +15. Fresh budget, pressure to keep reliability
+  ahead of growth.
+- Distributed stack (Kubernetes, microservices, multi-cloud): +15. More failure
+  modes, noisier on-call.
+- Three or more recent public incidents: +20. Visible, self-reported reliability pain.
 
-## Setup
+An account is drafted only if it has a public incident in the last 14 days or scores
+90+. Everything else is held for signal.
 
-One dependency (`anthropic`, for the email step); everything else is standard
-library. Use a virtual environment:
+## What a draft looks like
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+Emails reference the account's real signals and are written to sound like a person,
+not marketing. Here's the draft for an account with an incident that day:
 
-On macOS the interpreter is `python3` (Apple no longer ships a bare `python`).
-Inside an activated venv, `python` works too.
+> Saw your status page has an active incident today, so I'll keep this brief and
+> won't pretend the timing is great. Resolve builds an AI production engineer that
+> investigates alerts on its own, pulling context from Datadog and PagerDuty and
+> tracing the failure across Kubernetes services before an engineer even opens a
+> laptop. With three public incidents recently and roughly 400 engineers sharing the
+> pager, the investigation hours add up fast. Teams use it to shrink that time and
+> give on-call a head start on root cause. Would you be open to 15 minutes next week,
+> once things settle, to see how it works on a stack like yours?
 
-## How to run
+## Running it
 
-```bash
-python run.py
-```
+Run the pipeline with:
 
-That single command runs the whole pipeline: `load → enrich → score →
-generate → build dashboard`. It prints a ranked summary to the terminal, writes
-one email per company to `drafts/`, and builds `index.html` (open it directly
-in a browser — no server needed).
+    python run.py
 
-Useful flags:
+Loads the accounts, enriches them (including a live status-page fetch that degrades
+gracefully if a page is unreachable), scores them, drafts emails for triggered
+accounts, and builds index.html. Open that to see the ranked queue. Email
+generation reads ANTHROPIC_API_KEY from the environment.
 
-```bash
-python run.py --no-live      # skip the live status-page fetch, use seeded counts
-python run.py --no-emails    # skip email generation (scoring + dashboard still run)
-python run.py --timeout 3    # per-request timeout for the live fetch (seconds)
-```
+## Honest notes
 
-### Outreach generation (optional API step)
+The enrichment layer is seeded with public signals I gathered by hand. In production
+it would pull from Apollo, Clearbit, and status-page APIs directly. The scoring
+weights are a starting hypothesis, not gospel: the intended next step is a feedback
+loop that tracks which signals actually predicted a reply and tunes the weights from
+what converts. Right now every account shows an outreach_status field stubbed for
+exactly that.
 
-Email drafting calls the Anthropic API. Set your key first:
+## Structure
 
-```bash
-export ANTHROPIC_API_KEY=sk-ant-...
-```
-
-The key is read only from the environment — it is never hardcoded or committed.
-Generated emails are cached, so re-runs don't re-call the API for unchanged
-companies. If the key is missing, the pipeline still scores and ranks; it just
-skips email generation and says so.
-
-## Project layout
-
-```
-prospect-signal/
-  data/companies.json   ICP seed dataset
-  src/models.py         Company / Signals / ScoreResult / Lead data model
-  src/enrich.py         Derived signals + optional live status-page fetch
-  src/score.py          Transparent weighted scoring rubric
-  src/generate.py       Signal-aware outreach email generation
-  src/dashboard.py      Static index.html renderer
-  run.py                Orchestration + terminal summary
-```
-
-## A note on the data (honest)
-
-The enrichment layer is seeded with **manually gathered public signals** —
-funding stage, engineering headcount, on-call tooling, and stack are
-hand-collected estimates for a demo. The one exception is incident counts: the
-pipeline will optionally fetch a company's public status page live and count
-recent incidents, falling back to the seeded number if the fetch fails.
-
-In production this layer would connect to real enrichment sources — Apollo or
-Clearbit for firmographics, job-posting and status-page APIs for tooling and
-reliability signals — instead of a static seed file.
+- data/companies.json — the seed accounts
+- src/enrich.py — signal derivation + live status-page fetch
+- src/score.py — the transparent scoring rubric
+- src/generate.py — signal-aware email drafting
+- src/dashboard.py — the static dashboard
+- run.py — orchestrates the pipeline
